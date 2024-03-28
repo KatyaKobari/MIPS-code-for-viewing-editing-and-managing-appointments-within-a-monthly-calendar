@@ -1,0 +1,1394 @@
+.data
+buffer: .space 1 
+filename: .asciiz "C:\\Users\\SS\\Desktop\\u\\Y4S1\\Arch\\DONE\\DONE.txt"
+fout: .asciiz "CalenderOut.txt"
+SavingBuffer: .space 3100
+flag: .word 0  # The flag to control the flow
+menu: .asciiz "\n=====================Menu=====================\n 1)View Calendar\n 2)View Statistics\n 3)Add Appointment\n 4)Delete Appointment\n 5)Save into file\n 6)Exit\n Enter the number: "
+FileReadingDoneMsg: .asciiz "Done reading the file!\n"
+ViewMsg: .asciiz "\n==========================\n1)Per day\n2)Per set of days\n3)For a given slot in a given day\n==========================\nEnter your Choose: \n"
+errorMsg1: .asciiz "\n==========================\n!!!!!!!!!!!!!!!!!!!!!!!!!!\n!!!!!!Invalid option!!!!!!\n!!!!!!!!!!!!!!!!!!!!!!!!!!\n==========================\n"
+errorMsg2: .asciiz "Error reading the file\n"
+errorTimeMsg: .asciiz "\nError! there is a conflict with the existing appointments. \n"
+Day: .asciiz "\n==========================\nEnter the day number (1-31): "
+MeetingsHours: .asciiz "\n==========================\nMeetings Hours: "
+LecturesHours: .asciiz "\n==========================\nLectures Hours: "
+OHsHours: .asciiz "\n==========================\nOffice Hours: "
+printday: .asciiz "Enter day of the month (1-30): "
+ViewDaysMsg: .asciiz "\n==========================\nView Appointments for Days\n==========================\n"
+numofdays: .asciiz "Enter the number of days to view: "
+daysToView: .word 0  
+L: .asciiz "Lecture\n"
+M: .asciiz "Meeting\n"
+OH: .asciiz "Office Hours\n"
+schedule:   .space  496     # 31 days * 64 bytes per day
+EmptyMsg: .asciiz "\n==========================\nThe day has no appointments\n"
+AverageLecturesMSG: .asciiz "\n==========================\nThe Average Lectures hours per day: "
+DaysWithAppointmentMsg: .asciiz "\n==========================\nThe Number of days with appointments: "
+RatioMSG:  .asciiz "\n==========================\nThe Ratio between lectures and office hours: "
+TimeFrom: .asciiz "\n==========================\nEnter the start time: "
+TimeTo: .asciiz "\n==========================\nEnter the end time: "
+AppointmentOptions: .asciiz "1)Lecture\n2)Office Hours\n3)Meetings\nEnter (1-3): "
+L1: .asciiz "Lecture:"
+M1: .asciiz "Meeting:"
+OH1: .asciiz "Office Hours:"
+NoApptMsg:  .asciiz "No appointments in this time slot:"
+appointment_type:
+    .asciiz "L"   # Lecture
+    .asciiz "OH"  # Office Hours
+    .asciiz "M"   # Meetings
+.text
+main:
+    # Open file
+    li $v0, 13         # System call for open file
+    la $a0, filename   # Load address of filename
+    li $a1, 0          # Flags: O_RDONLY
+    li $a2, 0          # Mode: not needed for read-only
+    syscall
+
+    beq $v0,0xffffffff, FileNameError #to check the filename errors
+
+    move $s0, $v0      # Save file descriptor
+
+    # Initialize loop variables
+    li $t1, 0          # Day index
+    li $t2, 0          # Time slot index
+    la $t3, buffer     # Load the address of the buffer
+
+read_day_loop:
+    # Read the day number
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t6,($t3)
+
+
+
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t7,($t3)
+    beq $t7, 58, OneNumberDay
+    sub $t6,$t6,48
+    mul $t6,$t6,10
+
+    sub $t7,$t7,48
+    add $t1,$t6,$t7
+    sub $t1,$t1,1
+
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+    j read_char_loop
+OneNumberDay:
+    sub $t6,$t6,48
+    move $t1,$t6
+    sub $t1,$t1,1
+    j read_char_loop
+TwoNumbersHour:
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t7,($t3)
+
+    sub $t6,$t6,48
+    beq $t7, 0x0000002d,return
+    mul $t6,$t6,10
+    sub $t7,$t7,48
+    add $t6,$t6,$t7
+    j return
+TwoNumbersHour2:
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t7,($t3)
+
+    sub $t6,$t6,48
+    beq $t7, 0x00000020,return2
+    mul $t6,$t6,10
+    sub $t7,$t7,48
+    add $t6,$t6,$t7
+    j return2
+read_char_loop:
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t6,($t3)
+
+
+    # Check for end of file
+    beq $t6 ,0x00000023, FileReadingDone
+    beq $t6, 0x00000020,read_char_loop
+    beq $t6, 0x0000002c,read_char_loop
+    beq $t6, 72,read_char_loop
+    beq $t6, 10, read_day_loop
+    beq $t6, 10,newDay
+    bne $t6, 0x0000002d,TwoNumbersHour
+
+return:
+    move $t8,$t6
+return1:
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t6,($t3)
+    beq $t6, 0x0000002d, return1
+    bne $t6, 0x0000002c,TwoNumbersHour2
+
+
+return2:
+    move $t9,$t6
+Keep:
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+
+    lb $t6,($t3)
+
+
+    beq $t6, 0x00000020,Keep
+    beq $t6, 77, Meeting
+    beq $t6, 79, Office
+    beq $t6, 76, Lecture
+return3:
+    sub $t8,$t8,1
+    # Store the character in the 2D array
+    la $t4, schedule    # Load the base address of the 2D array
+    sll $t5, $t1, 4     # Calculate the offset for the day index (9 time slots * 4 bytes per word)
+    add $t4, $t4, $t5   # Add the offset to the base address
+    add $t4, $t4, $t2   # Add the offset to the base address
+    sb $t6, 0($t4)      # Store the character in the array
+
+    # Increment the time slot index
+    addi $t2, $t2, 1
+    bgt $t8,0, return3
+
+    j read_char_loop  # Repeat the loop for the next character
+
+
+end_program:
+    # Close file
+    li $v0, 16         # System call for close file
+    move $a0, $s0      # File descriptor
+    syscall
+
+    # Exit program
+    li $v0, 10         # System call for exit
+    syscall
+
+FileNameError:
+    li $v0, 4         
+    la $a0, errorMsg2      #to print the file name error message to the user
+    syscall
+    j end_program
+FileReadingDone:
+    li   $v0, 16       # system call for close file
+    move $a0, $s0      # file descriptor to close
+    syscall   
+    li $v0, 4         
+    la $a0, FileReadingDoneMsg      #to print the file name error message to the user
+    syscall
+    j Menu
+
+Office:
+
+
+Lecture: 
+
+Meeting:
+
+    ble $t8,5,pmT8
+    j amT8
+pmT8:
+    add $t8,$t8,12
+amT8:
+    ble $t9,5,pmT9
+    j amT9
+pmT9:
+    add $t9,$t9,12
+amT9:
+    sub $t2, $t8,8
+    sub $t8, $t9,$t8
+
+    j return3
+newDay:
+    li $v0, 14         # System call for read file
+    move $a0, $s0      # File descriptor
+    la $a1, buffer     # Buffer to store the character
+    li $a2, 1          # Number of bytes to read
+    syscall
+    j read_day_loop
+Menu:
+    li $v0, 4         
+    la $a0, menu     #to print the file name error message to the user
+    syscall
+    li $v0, 5
+    syscall
+     li $t1, 0
+    sw $t1, flag
+
+
+    # Moving the integer input to another register
+    move $t0, $v0
+    beq $t0,1,ViewCalender
+    beq $t0,2,ViewStatistics
+    beq $t0,3,AddAppointment
+    beq $t0,4,DeleteAppointment
+    beq $t0,5,SaveFile
+    beq $t0,6,end_program
+    li $v0, 4         
+    la $a0, errorMsg1      #to print the file name error message to the user
+    syscall
+
+    j Menu
+ViewCalender:
+    li $v0, 4         
+    la $a0, ViewMsg      #to print the file name error message to the user
+    syscall
+    li $v0, 5
+    syscall
+
+    # Moving the integer input to another register
+    move $t0, $v0
+    beq $t0,1,ViewDay
+    beq $t0,2,ViewDays
+    beq $t0,3,ViewTime
+
+    li $v0, 4         
+    la $a0, errorMsg1      #to print the file name error message to the user
+    syscall
+    j Menu
+checkDayEmpty:
+    bnez $t0,Menu
+    li $v0, 4         
+    la $a0, EmptyMsg
+    syscall
+    jr $ra
+ViewDay:
+    li $t0, 0
+    li $v0, 4         
+    la $a0, Day      #to print the file name error message to the user
+    syscall
+    li $v0, 5
+    syscall
+
+    # Moving the integer input to another register
+    move $t1, $v0
+    bgt $t1,31,Error2
+    blt $t1,1,Error2
+    sub $t1,$t1,1
+    li $t2,0
+    la $t4, schedule    # Load the base address of the 2D array
+    sll $t5, $t1, 4     # Calculate the offset for the day index (9 time slots * 4 bytes per word)
+    add $t4, $t4, $t5   # Add the offset to the base address
+
+    li $t1,0
+    li $t9,0
+check1:
+    addi $t1,$t1,1
+    la $t4, schedule 
+    add $t4, $t4, $t5   # Add the offset to the base address
+    beq $t2,10,FlowControl
+    add $t4, $t4, $t2   # Add the offset to the base address
+    lb $t6, 0($t4)      # Store the character in the array
+    # Increment the time slot index
+    addi $t2, $t2, 1
+    move $t9,$t6
+    beqz $t6,check
+    beq $t6, 77, PrintMeeting
+    beq $t6, 79, PrintOffice
+    beq $t6, 76, PrintLecture
+DayKeep:
+    addi $t1,$t1,1
+    la $t4, schedule 
+    add $t4, $t4, $t5   # Add the offset to the base address
+    beq $t2,10,FlowControl
+    add $t4, $t4, $t2   # Add the offset to the base address
+    lb $t6, 0($t4)      # Store the character in the array
+    # Increment the time slot index
+    addi $t2, $t2, 1
+Checklast:
+    beqz $t6,check
+    beq $t6, 77, PrintMeeting
+    beq $t6, 79, PrintOffice
+    beq $t6, 76, PrintLecture
+check:
+    beqz $t9,DayKeep
+    beq $t9, 77, PrintMeeting1
+    beq $t9, 79, PrintOffice1
+    beq $t9, 76, PrintLecture1
+FlowControl:
+    lw $t3, flag        
+    beq $t3,0, Menu      # If the flag is 0, go to Menu
+    beq $t3,1, subday # If the flag is 1, go to ViewDays    
+    j check1    
+
+ViewStatistics:
+#496
+    li $t0,0 #Lectures 76
+    li $t1,0 #OH 79
+    li $t2,0 #Meeting 77
+    li $t5,0
+KeepStat:
+    la $t4, schedule 
+    add $t4,$t4,$t5
+    lb $t6, 0($t4) 
+    add $t5,$t5,1
+    beq $t6, 77, AddM
+    beq $t6, 79, AddO
+    beq $t6, 76, AddL
+    beq $t5,496,DoneStat
+    beqz $t6 , KeepStat
+AddM:
+    add $t2,$t2,1
+    j KeepStat
+AddO:add $t1,$t1,1
+    j KeepStat
+AddL:add $t0,$t0,1
+    j KeepStat
+DoneStat:
+
+    li $v0, 4         
+    la $a0, LecturesHours      #to print the file name error message to the user
+    syscall
+
+    li $v0,1
+    move $a0,$t0
+    syscall
+
+
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+
+
+
+
+
+    li $v0, 4         
+    la $a0, OHsHours    #to print the file name error message to the user
+    syscall
+
+    li $v0,1
+    move $a0,$t1
+    syscall
+
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+
+
+
+
+    li $v0, 4         
+    la $a0, MeetingsHours      #to print the file name error message to the user
+    syscall
+
+    li $v0,1
+    move $a0,$t2
+    syscall
+
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+    li $t9,0
+    li $t5,0
+    li $t7,0
+    jal NumberOfDays
+    mul $t0,$t0,100
+    div $t9,$t0,$t7
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+
+    li $v0, 4
+    la $a0, AverageLecturesMSG
+    syscall
+    div $t8,$t9,100
+    li $v0,1
+    move $a0,$t8
+    syscall
+
+    li $a0, '.'
+    li $v0, 11    # print_character
+    syscall
+    mul $t8,$t8,100
+    sub $t9,$t9,$t8
+    li $v0,1
+    move $a0,$t9
+    syscall
+
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+
+#==========================================================
+    div $t9,$t0,$t1
+
+
+    li $v0, 4
+    la $a0, RatioMSG
+    syscall
+
+    div $t8,$t9,100
+    li $v0,1
+    move $a0,$t8
+    syscall
+
+    li $a0, '.'
+    li $v0, 11    # print_character
+    syscall
+    mul $t8,$t8,100
+    sub $t9,$t9,$t8
+    li $v0,1
+    move $a0,$t9
+    syscall
+
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+
+
+    li $v0, 4
+    la $a0, DaysWithAppointmentMsg
+    syscall
+
+    li $v0,1
+    move $a0,$t7
+    syscall
+
+
+
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+
+
+    j Menu
+AddAppointment:
+#the user will provide the required information: day number, slot, and 
+#type. The program will check if there is a conflict with the existing appointments.
+    #=============================================================================================================================================
+    li $v0, 4         
+    la $a0, Day      #to print the file name error message to the user
+    syscall
+
+    li $v0, 5
+    syscall
+    # Moving the integer input to another register
+    move $t0, $v0
+    bgt $t0,31,Error2
+    blt $t0,1,Error2
+    sub $t0,$t0,1
+    li $v0, 4         
+    la $a0, TimeFrom      #to print the file name error message to the user
+    syscall
+
+    li $v0, 5
+    syscall
+    # Moving the integer input to another register
+    move $t1, $v0
+
+    bgt $t1,5,KeepTime1
+
+KeepTime:
+    add $t1,$t1,12
+KeepTime1:
+
+    bgt $t1,16,Error2
+
+    blt $t1,8,Error2
+    li $v0, 4         
+    la $a0, TimeTo     #to print the file name error message to the user
+    syscall
+
+    li $v0, 5
+    syscall
+    # Moving the integer input to another register
+    move $t2, $v0
+
+    bgt $t2,5,KeepTime3
+
+KeepTime2:
+    add $t2,$t2,12
+
+KeepTime3:
+    bgt $t2,17,Error2
+    blt $t2,9,Error2
+    sll $t3,$t0,4
+    la $t4, schedule 
+    add $t4, $t4, $t3   # Add the offset to the base address
+    sub $t1,$t1,8
+    sub $t2,$t2,9
+
+    add $t5, $t4, $t2
+    add $t4, $t4, $t1
+whileTime:
+    lb $t6, 0($t4)      # Store the character in the array
+    bnez $t6,ErrorTime
+    add $t4, $t4, 1
+    bgt $t4,$t5,PrintTime
+    j whileTime
+ErrorTime:
+    li $v0, 4         
+    la $a0, errorTimeMsg      #to print the file name error message to the user
+    syscall
+    j Menu
+PrintTime:
+    li $v0, 4         
+    la $a0, AppointmentOptions      #to print the file name error message to the user
+    syscall
+
+    li $v0, 5
+    syscall
+    # Moving the integer input to another register
+    move $t9, $v0
+    bgt $t9,3,Error2
+    blt $t9,1,Error2
+
+
+    sll $t3,$t0,4
+    la $t4, schedule 
+    add $t4, $t4, $t3   # Add the offset to the base address  
+    add $t5, $t4, $t2
+    add $t4, $t4, $t1
+
+
+    beq $t9, 3, whileTimeM
+    beq $t9, 2, whileTimeOH
+    beq $t9, 1, whileTimeL
+
+whileTimeM:
+    li $t6,77
+    sb $t6, 0($t4)
+    add $t4, $t4, 1
+    bgt $t4,$t5,Menu
+    j whileTimeM
+whileTimeOH:
+    li $t6,79
+    sb $t6, 0($t4)
+    add $t4, $t4, 1
+    bgt $t4,$t5,Menu
+    j whileTimeOH
+whileTimeL:
+    li $t6,76
+    sb $t6, 0($t4)
+    add $t4, $t4, 1
+    bgt $t4,$t5,Menu
+    j whileTimeL
+#=================================== Delete Appointment ===================================
+DeleteAppointment:
+    li $v0, 4         
+    la $a0, Day
+    syscall
+    
+    li $v0, 5
+    syscall
+    move $t0, $v0
+    bgt $t0, 31, Error2
+    blt $t0, 1, Error2
+    sub $t0, $t0, 1
+
+    li $v0, 4         
+    la $a0, TimeFrom
+    syscall
+    
+    li $v0, 5
+    syscall
+    move $t1, $v0
+    move $t9, $t1  # Store start time for later use
+    bgt $t1, 5, KeepTime4
+    add $t1, $t1, 12
+
+KeepTime4:
+    bgt $t1, 16, Error2
+    blt $t1, 8, Error2
+    
+    li $v0, 4         
+    la $a0, TimeTo
+    syscall
+    
+    li $v0, 5
+    syscall
+    move $t2, $v0
+    bgt $t2, 5, KeepTime5
+    add $t2, $t2, 12
+
+KeepTime5:
+    bgt $t2, 17, Error2
+    blt $t2, 9, Error2
+
+    # Get user input for appointment type
+    li $v0, 4
+    la $a0, AppointmentOptions
+    syscall
+
+    li $v0, 5
+    syscall
+    move $t8, $v0  # Store user input in $t8
+
+    # Set the appointment type based on user input
+    beq $t8, 1, SetLectureType
+    beq $t8, 2, SetOfficeHourType
+    beq $t8, 3, SetMeetingType
+    j Error2  # Handle invalid input
+
+SetLectureType:
+    li $t9, 76
+    j ContinueDeleteAppointment
+
+SetOfficeHourType:
+    li $t9, 79
+    j ContinueDeleteAppointment
+
+SetMeetingType:
+    li $t9, 77
+    j ContinueDeleteAppointment
+
+ContinueDeleteAppointment:
+    sll $t3, $t0, 4
+    la $t4, schedule 
+    add $t4, $t4, $t3
+    sub $t1, $t1, 8
+    sub $t2, $t2, 9
+    add $t5, $t4, $t2
+    add $t4, $t4, $t1
+
+    # Initialize a counter for appointments of the specified type within the range
+    li $t7, 0
+
+    whileTimeDelete:
+        lb $t6, 0($t4)
+        # Check if the appointment type matches the specified type
+        beq $t6, $t9, FoundAppointmentDelete
+        add $t4, $t4, 1
+        bgt $t4, $t5, ExitWhileTimeDelete
+        # If there's a break or another type, exit the loop
+        j whileTimeDelete
+
+FoundAppointmentDelete:
+        # Increment the counter
+        addi $t7, $t7, 1
+
+        # Delete the current appointment
+        li $t6, 0x00000000
+        sb $t6, 0($t4)
+
+        # Increment the pointer to the next element
+        add $t4, $t4, 1
+        lb $t6, 0($t4)
+        bne $t6, $t9, ExitWhileTimeDelete
+        # Check if there are more appointments to check
+        bgt $t4, $t5, ExitWhileTimeDelete
+
+        j whileTimeDelete
+
+ExitWhileTimeDelete:
+    # Jump to Menu
+    j Menu
+
+
+#=======================================================================================
+Error2:
+    li $v0, 4         
+    la $a0, errorMsg1      #to print the file name error message to the user
+    syscall
+    j Menu
+PrintOffice:
+    bnez $t9, JumpO
+
+    li $t1,1
+    li $t9,79
+    j DayKeep
+JumpO:
+    move $t3,$t2
+    beq $t9,79, DayKeep
+    sub $t1,$t1,1
+    sub $t3,$t3,1
+    jal PrintAll1
+    li $t1,1
+    li $t9,79
+    j DayKeep
+PrintMeeting:
+    bnez $t9, JumpM
+
+    li $t1,1
+    li $t9,77
+    j DayKeep
+JumpM:
+    move $t3,$t2
+    beq $t9,77, DayKeep
+    sub $t1,$t1,1
+    sub $t3,$t3,1
+    jal PrintAll1
+    li $t1,1
+    li $t9,77
+    j DayKeep
+PrintLecture:    
+    bnez $t9, JumpL
+
+    li $t1,1
+    li $t9,76
+    j DayKeep
+JumpL:
+    move $t3,$t2
+    beq $t9,76, DayKeep
+    sub $t1,$t1,1
+    sub $t3,$t3,1
+    jal PrintAll1
+    li $t1,1
+    li $t9,76
+    j DayKeep
+
+PrintAll1:
+    li $t0,1 #to check if the day is empty or not
+    li $a0, '\n'
+    li $v0, 11    # print_character
+    syscall
+    sub $t3,$t3,$t1
+    add $t8,$t3,8
+    bgt $t8,12,Subb
+KeepPrinting:
+    li $v0,1
+    move $a0,$t8
+    syscall
+
+    li $a0, '-'
+    li $v0, 11    # print_character
+    syscall
+    add $t3,$t3,$t1
+    add $t8,$t3,8
+    bgt $t8,12,Subb1
+KeepPrinting1:
+    li $v0,1
+    move $a0,$t8
+    syscall
+    li $a0, ':'
+    li $v0, 11    # print_character
+    syscall
+    beq $t9, 77, PrintM
+    beq $t9, 79, PrintO
+    beq $t9, 76, PrintL
+
+PrintO:
+    li $v0, 4         
+    la $a0, OH     #to print the file name error message to the user
+    syscall
+    jr $ra
+PrintM:
+    li $v0, 4         
+    la $a0, M     #to print the file name error message to the user
+    syscall
+    jr $ra
+PrintL:
+    li $v0, 4         
+    la $a0, L      #to print the file name error message to the user
+    syscall
+
+    jr $ra
+Subb:
+    sub $t8,$t8,12
+    j KeepPrinting
+
+Subb1:
+    sub $t8,$t8,12
+    j KeepPrinting1
+
+
+
+ViewDays:
+    li $v0, 4
+    la $a0, numofdays
+    syscall
+
+    # Read user input for the number of days to view
+    li $v0, 5
+    syscall
+    move $t7,$v0
+    add $t7,$t7,1
+    sw $t7, daysToView   # Store the number of days to view in daysToView
+    li $t1, 1
+    sw $t1, flag
+
+subday:
+   lw $t3, daysToView   # Initialize loop counter with user input
+   sub $t3, $t3, 1
+   sw $t3, daysToView
+   j ViewDaysLoop
+ViewDaysLoop:
+    # Check if there are more days to view
+    beq $t3, 0, EndViewDays  # If counter is zero, go to EndViewDays
+    jal ViewDay
+EndViewDays:
+    # Reset the flag to 0, indicating we are done viewing days
+    li $t1, 0
+    sw $t1, flag
+    j Menu
+
+
+#-------------- per slot----------------------
+ViewTime:
+    li $v0, 4         
+    la $a0, Day      # Print the file name error message to the user
+    syscall
+    
+    li $v0, 5
+    syscall
+    # Move the integer input to another register
+    move $t0, $v0
+    bgt $t0,31,Error2
+    blt $t0,1,Error2
+    sub $t0,$t0,1
+    li $v0, 4         
+    la $a0, TimeFrom      # Print the file name error message to the user
+    syscall
+    
+    li $v0, 5
+    syscall
+    # Move the integer input to another register
+    move $t1, $v0
+    move $t9,$t1
+    bgt $t1,5,KeepTime6
+    add $t1,$t1,12
+KeepTime6:
+    bgt $t1,16,Error2
+    blt $t1,8,Error2
+    li $v0, 4         
+    la $a0, TimeTo     # Print the file name error message to the user
+    syscall
+    
+    li $v0, 5
+    syscall
+    # Move the integer input to another register
+    move $t2, $v0
+    
+    bgt $t2,5,KeepTime7
+    add $t2,$t2,12
+
+KeepTime7:
+    bgt $t2,17,Error2
+    blt $t2,9,Error2
+    sll $t3,$t0,4
+    la $t4, schedule 
+    add $t4, $t4, $t3   # Add the offset to the base address
+    sub $t1,$t1,8
+    sub $t2,$t2,9
+    
+    add $t5, $t4, $t2
+    add $t4, $t4, $t1
+printInRange:
+    # Initialize start time
+      move $t7, $t9 # Assuming the schedule starts at 8 AM
+    # Loop through each time slot in the range
+    printLoop:
+      lb $t6, 0($t4)
+       beq $t6, 0, NoAppointment
+       beq $t6, 76, PrintLecture2
+       beq $t6, 77, PrintMeeting2
+       beq $t6, 79, PrintOfficeHour2
+       j SkipPrint  # Jump to SkipPrint if none of the appointments match
+
+NoAppointment:
+    # Print "No Appointment" if an appointment hasn't been printed in this time slot
+    beq $t8, 0, PrintNoAppointment
+    # Reset the variable for the next time slot
+    li $t8, 0
+    j SkipPrint
+
+PrintNoAppointment:
+    li $v0, 4
+    la $a0, NoApptMsg
+    syscall
+    # Print start time
+        jal PrintTime1
+
+        # Print separator (-)
+        li $v0, 11
+        la $a0, '-'
+        syscall
+
+        # Print end time
+        addi $t7, $t7, 1  # Assuming each time slot is 1 hour
+        jal PrintTime1
+         li $v0, 11
+        la $a0, '\n'
+        syscall
+        # Jump to SkipPrint
+    j SkipPrint
+    PrintLecture2:
+        # Print type
+        li $v0, 4
+        la $a0, L1
+        syscall
+
+        # Print start time
+        jal PrintTime1
+
+        # Print separator (-)
+        li $v0, 11
+        la $a0, '-'
+        syscall
+
+        # Print end time
+        addi $t7, $t7, 1  # Assuming each time slot is 1 hour
+        jal PrintTime1
+        li $v0, 11
+        la $a0, '\n'
+        syscall
+        # Jump to SkipPrint
+        j SkipPrint
+
+    PrintMeeting2:
+        # Print type
+        li $v0, 4
+        la $a0, M1
+        syscall
+
+        # Print start time
+        jal PrintTime1
+
+        # Print separator (-)
+        li $v0, 11
+        la $a0, '-'
+        syscall
+
+        # Print end time
+        addi $t7, $t7, 1  # Assuming each time slot is 1 hour
+        jal PrintTime1
+         li $v0, 11
+        la $a0, '\n'
+        syscall
+        # Jump to SkipPrint
+        j SkipPrint
+
+    PrintOfficeHour2:
+        # Print type
+        li $v0, 4
+        la $a0, OH1
+        syscall
+
+        # Print start time
+        jal PrintTime1
+
+        # Print separator (-)
+        li $v0, 11
+        la $a0, '-'
+        syscall
+       
+        # Print end time
+        addi $t7, $t7, 1  # Assuming each time slot is 1 hour
+        jal PrintTime1
+         li $v0, 11
+        la $a0, '\n'
+        syscall
+        j SkipPrint
+ SkipPrint:
+        addi $t4, $t4, 1
+        bgt $t4, $t5, Menu  # Jump to Menu if end of range is reached
+        j printLoop
+
+PrintTime1:
+    # Print time based on the time slot index
+    move $a0, $t7
+
+    # Check if the time is greater than or equal to 12
+    bge $t7, 12, ConvertTo12Hour
+
+    li $v0, 1
+    syscall
+    j PrintTimeEnd
+
+ConvertTo12Hour:
+    # Check if the time is exactly 12
+    beq $t7, 12, Print12Hour
+    sub $t7, $t7, 12
+    j Print12Hour
+
+Print12Hour:
+    li $v0, 1
+    move $a0, $t7
+    syscall
+    j PrintTimeEnd
+PrintTimeEnd:
+    jr $ra  # Return from the PrintTime function
+#--------------------
+PrintOffice1:
+    move $t3,$t2
+    sub $t1,$t1,1
+    sub $t3,$t3,1
+    jal PrintAll1
+    li $t1,0
+    li $t9,0
+    j check1
+PrintMeeting1:
+    move $t3,$t2
+    sub $t1,$t1,1
+    sub $t3,$t3,1
+    jal PrintAll1
+    li $t1,0
+    li $t9,0
+    j check1
+PrintLecture1:
+    move $t3,$t2
+    sub $t1,$t1,1
+    sub $t3,$t3,1
+    jal PrintAll1
+    li $t1,0
+    li $t9,0
+    j check1
+NumberOfDays:
+    bne $t9,16,Jump
+    add $t5,$t5,1
+Jump:
+    la $t4, schedule 
+    sll $t8,$t5,4
+    add $t4,$t4,$t8
+    li $t9,0
+    bne $t5,31,while1
+    jr $ra
+while1:
+    add $t4,$t4,1
+    lb $t6, 0($t4) 
+    add $t9,$t9,1
+    beq $t9,16, NumberOfDays
+    beqz $t6,while1
+    add $t5,$t5,1
+    add $t7,$t7,1
+    j NumberOfDays
+#==============================================================================================================================================
+SaveFile:
+    la $t0, schedule
+    la $t1, SavingBuffer
+    li $t2,1	 #day
+SaveDay:
+    bgt $t2,31,SaveFinal
+    li $t3,0 	#hours from
+    li $t4,0 #hours in
+    li $t5,0 #load_type
+    li $t6,0 #ccounter
+    li $t9,0
+
+    la $t0, schedule
+    bge $t2,10,TwoDigitsDay
+    add $s0,$t2,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    j AfterDayNumber
+    #to store the day digit
+TwoDigitsDay:
+    div $s0,$t2,10
+    add $s0,$s0,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    #to store the first day digit
+    sub $s0,$s0,48
+    mul $s0,$s0,10
+    sub $s0,$t2,$s0
+    add $s0,$s0,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    #to store the second day digit
+AfterDayNumber:
+    li $s7,1
+    li $s0,58 # to save ':'
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    sub $s1,$t2,1
+    sll $s2,$s1,4
+    add $t0,$t0,$s2
+
+CheckingSaveHours:
+    addi $t9, $t9, 1
+
+    lb $t7,0($t0)
+    add $t0,$t0,1
+    add $t4,$t4,1
+    move $t8,$t7
+    bgt $t9,10,EndLine
+    #read first hour ^
+    beqz $t7,SaveCheck
+
+    move $s3,$t8
+    beq $t7, 77, SavePrintMeeting
+    beq $t7, 79, SavePrintOffice
+    beq $t7, 76, SavePrintLecture
+
+HoursLoop:
+    lb $t7,0($t0)
+    add $t0,$t0,1
+    addi $t9, $t9, 1
+
+    bgt $t9,10,EndLine
+
+    add $t4,$t4,1
+    beqz $t7,SaveCheck
+
+    move $s3,$t8
+    beq $t7, 77, SavePrintMeeting
+    beq $t7, 79, SavePrintOffice
+    beq $t7, 76, SavePrintLecture
+
+    #===================
+    j HoursLoop
+
+SaveCheck:
+    beqz $t8,HoursLoop
+    move $s3,$t8
+    beq $t8,76,SavePrintLecture1
+    beq $t8,77,SavePrintMeeting1
+    beq $t8,79,SavePrintOffice1
+
+
+
+SavePrintOffice1:
+    move $t8,$t7
+    move $t3,$t9
+    jal SavePrintAll1
+    li $s0,44
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $t4,0
+    li $t8,0
+    j CheckingSaveHours
+SavePrintMeeting1:
+    move $t8,$t7
+    move $t3,$t9
+    jal SavePrintAll1
+    li $s0,44
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $t4,0
+    li $t8,0
+    j CheckingSaveHours
+SavePrintLecture1:
+    move $t8,$t7
+    move $t3,$t9
+    jal SavePrintAll1
+    li $s0,44
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $t4,0
+    li $t8,0
+    j CheckingSaveHours
+
+
+
+SavePrintOffice:
+    bnez $t8, SaveJumpO
+
+    li $t4,1
+    li $t8,79
+    j HoursLoop
+SaveJumpO:
+    move $t3,$t9
+    beq $t8,79, HoursLoop
+    jal SavePrintAll1
+    li $s0,44
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $t4,1
+    li $t8,79
+    j HoursLoop
+SavePrintMeeting:
+    bnez $t8, SaveJumpM
+
+    li $t4,1
+    li $t8,77
+    j HoursLoop
+SaveJumpM:
+    move $t3,$t9
+    beq $t8,77, HoursLoop
+    jal SavePrintAll1
+    li $s0,44
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $t4,1
+    li $t8,77
+    j HoursLoop
+SavePrintLecture:    
+    bnez $t8, SaveJumpL
+
+    li $t4,1
+    li $t8,76
+    j HoursLoop
+SaveJumpL:
+    move $t3,$t9
+    beq $t8,76, HoursLoop
+    jal SavePrintAll1
+    li $s0,44
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    li $t4,1
+    li $t8,76
+    j HoursLoop
+
+EndLine:
+    bnez $s7,NewLine
+    sub $t1,$t1,1
+    li $s0,0 
+    sb $s0,0($t1)
+    sub $t1,$t1,1
+    li $s0,0 
+    sb $s0,0($t1)
+NewLine:
+    li $s0,10
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    add $t2,$t2,1
+    j SaveDay
+
+
+SavePrintAll1:
+
+    sub $t4,$t4,1
+    sub $t3,$t3,1
+    li $s7,0
+    sub $t3,$t3,$t4
+    add $s1,$t3,8
+    ble $s1,12,SaveKeepPrinting
+    sub $s1,$s1,12
+
+SaveKeepPrinting:
+    blt $s1,10,KeepPrintingSaving 
+    move $a1, $ra
+    jal TwoDigitNumber
+    move  $ra,$a1
+
+    j Over
+KeepPrintingSaving:
+    add $s0,$s1,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+Over:
+    li $s0,45
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    add $t3,$t3,$t4
+    add $s1,$t3,8
+    ble $s1,12,SaveKeepPrinting1
+    sub $s1,$s1,12
+SaveKeepPrinting1:
+    blt $s1,10,KeepPrintingSaving2
+    move $a1, $ra
+    jal TwoDigitNumber
+    move  $ra,$a1
+    j Over2
+KeepPrintingSaving2:
+    add $s0,$s1,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+Over2:
+    li $s0,32
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    beq $s3, 77, SavePrintM
+    beq $s3, 79, SavePrintO
+    beq $s3, 76, SavePrintL
+
+SavePrintO:
+    li $s0,79
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    li $s0,72
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    jr $ra
+SavePrintM:
+    li $s0,77
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    jr $ra
+SavePrintL:
+
+    li $s0,76
+    sb $s0,0($t1)
+    add $t1,$t1,1
+
+    jr $ra
+
+
+TwoDigitNumber:
+    div $s0,$s1,10
+    add $s0,$s0,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    sub $s0,$s0,48
+    mul $s0,$s0,10
+    sub $s0,$s1,$s0
+    add $s0,$s0,48
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    jr $ra
+
+
+SaveFinal:
+    li $s0,35
+    sb $s0,0($t1)
+    add $t1,$t1,1
+    # Open (for writing) a file that does not exist
+    li   $v0, 13       # system call for open file
+    la   $a0, filename     # output file name
+    li   $a1, 1       # Open for writing (flags are 0: read, 1: write)
+    li   $a2, 0        # mode is ignored
+    syscall            # open a file (file descriptor returned in $v0)
+    move $s6, $v0      # save the file descriptor 
+    # Write to file just opened
+    li   $v0, 15       # system call for write to file
+    move $a0, $s6      # file descriptor 
+    la $a1, SavingBuffer      # address of buffer from which to write
+    li   $a2, 3100      # hardcoded buffer length
+    syscall            # write to file
+    # Close the file 
+    li   $v0, 16       # system call for close file
+    move $a0, $s6      # file descriptor to close
+    syscall   
+    j Menu
